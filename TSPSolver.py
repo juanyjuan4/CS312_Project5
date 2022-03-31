@@ -80,7 +80,7 @@ class TSPSolver:
 		for i in range(0, ncities):
 			for j in range(0, ncities):
 				if self._scenario._edge_exists[i, j]:
-					matrix[i, j] = self.scenario._cities[i].costTo(self.scenarios._cities[j])
+					matrix[i, j] = self._scenario._cities[i].costTo(self._scenario._cities[j])
 		
 		if reduce:
 			rowMins = np.amin(matrix, axis = 1)
@@ -110,22 +110,47 @@ class TSPSolver:
 	'''
 
 	def greedy( self,time_allowance=60.0 ):
+		start_time = time.time()
 		results = {}
-		ncities = len(self._scenario._cities
+		ncities = len(self._scenario._cities)
 		matrix, lowerBound = self.createMatrix(False)
+		count = 0
+		print(matrix)
 		
 		currentIndex = 0
-		path = [self._scenarios._cities[currentIndex]]
-		while len(path) < ncities + 1:
+		path = []
+		path.append(self._scenario._cities[currentIndex])
+		while len(path) < ncities:
+			matrix[currentIndex, 0] = np.inf
 			nextMin = np.amin(matrix[currentIndex, :])
+			print(nextMin)
 			lowerBound += nextMin
-			nextIndex = np.where(matrix[currentIndex, :] == nextMin)
+			nextIndex = np.where(matrix[currentIndex, :] == nextMin)[0][0]
 			path.append(self._scenario._cities[nextIndex])
-			matrix[:, nextIndex] += np.inf
+			matrix[:, nextIndex] += np.repeat(np.inf, ncities)
+			matrix[currentIndex, :] += np.repeat(np.inf, ncities)
 			currentIndex = nextIndex
+			count += 1
+			print(matrix)
+		
+		print(matrix[currentIndex, 0])
+		if matrix[currentIndex, 0] == np.inf:
+			return np.inf
+		else:
+			path.append(self._scenario._cities[0])
 		
 		self.bssf = TSPSolution(path)
+		self.bssf._costOfRoute()
+		print(self.bssf.cost)
+		end_time = time.time()
 		
+		results['cost'] = self.bssf.cost
+		results['time'] = end_time - start_time
+		results['count'] = count
+		results['soln'] = self.bssf
+		results['max'] = None
+		results['total'] = None
+		results['pruned'] = None
 		return results
 
 
@@ -140,47 +165,91 @@ class TSPSolver:
 	'''
 
 	def branchAndBound( self, time_allowance=60.0 ):
+		start_time = time.time()
 		results = {}
 		ncities = len(self._scenario._cities)
 		matrix, lowerBound = self.createMatrix(True)
+		print("Number of cities:")
+		print(ncities)
+		print("Lower bound:")
+		print(lowerBound)
+		print("Original Matrix:")
+		print(matrix)
+		count = 0
+		pruned = 0
 		
 		self.greedy()
 		
 		heap = []
 		currentIndex = 0
-		path = [self._scenarios._cities[currentIndex]]
+		path = []
+		path.append(self._scenario._cities[currentIndex])
 		for i in range(1, ncities):
+			count += 1
 			tempBound = lowerBound + matrix[currentIndex, i]
-			tempMatrix = matrix
-			tempMatrix[:, i] += np.inf
+			tempMatrix = matrix.copy()
+			#rowMins = np.amin(tempMatrix, axis = 1)
+			tempMatrix[:, i] += np.repeat(np.inf, ncities)
+			tempMatrix[currentIndex, :] += np.repeat(np.inf, ncities)
+			#print("Temp Matrix:", i)
+			#print(tempMatrix)
 			rowMins = np.amin(tempMatrix, axis = 1)
-			tempPath = path + [self._scenarios._cities[i]]
+			#print(rowMins)
+			tempPath = path + [self._scenario._cities[i]]
 			for j in range(0, ncities):
-				tempMatrix[j, :] -= rowMins[j]
+				if rowMins[j] == np.inf:
+					continue
+				tempMatrix[j, :] -= np.repeat(rowMins[j], ncities)
 				tempBound += rowMins[j]
-			if tempBound < self.bssf._costOfRoute():
+			#print(rowMins)
+			#print(tempBound)
+			if tempBound < 9000:
 				heapq.heappush(heap, (tempBound, i, tempMatrix, tempPath))
+				#print(tempMatrix)
 		
-		while heap:
+		while heap and time.time() - start_time < time_allowance:
+			print(heap[0])
+			print(len(heap))
 			currentBound, currentIndex, currentMatrix, currentPath = heapq.heappop(heap)
 			for i in range(0, ncities):
-				if i == index:
+				if i == currentIndex:
 					continue
+				count += 1
 				tempBound = currentBound + currentMatrix[currentIndex, i]
-				tempMatrix = currentMatrix
-				tempMatrix[:, i] += np.inf
+				tempMatrix = currentMatrix.copy()
+				#rowMins = np.amin(tempMatrix, axis = 1)
+				tempMatrix[:, i] += np.repeat(np.inf, ncities)
+				tempMatrix[currentIndex, :] += np.repeat(np.inf, ncities)
+				#for j in range(0, ncities):
+				#	tempMatrix[j, i] = np.inf
+				#	tempMatrix[currentIndex, j] = np.inf
 				rowMins = np.amin(tempMatrix, axis = 1)
-				tempPath = currentPath + [self._scenarios._cities[i]]
+				#print(rowMins)
+				tempPath = currentPath + [self._scenario._cities[i]]
 				for j in range(0, ncities):
-					tempMatrix[j, :] -= rowMins[j]
+					if rowMins[j] == np.inf:
+						continue
+					tempMatrix[j, :] -= np.repeat(rowMins[j], ncities)
 					tempBound += rowMins[j]
-				if tempBound < self.bssf._costOfRoute():
+				#print(tempBound)
+				if tempBound < 9000:
+					#print(tempMatrix)
 					if i == 0:
 						self.bssf = TSPSolution(tempPath)
 					else:
 						heapq.heappush(heap, (tempBound, i, tempMatrix, tempPath))
-				
+				else:
+					pruned += 1
 		
+		end_time = time.time()
+			
+		results['cost'] = self.bssf.cost
+		results['time'] = end_time - start_time
+		results['count'] = count
+		results['soln'] = self.bssf
+		results['max'] = None
+		results['total'] = None
+		results['pruned'] = pruned
 		return results
 
 
